@@ -1,0 +1,36 @@
+# f(x,y) = (1/28) * (2*x + 3*y + 2)
+
+# f(x|y) = f(x,y) / f(x) = (2*x + 3*y + 2) / (6*y + 8)
+# f(y|x) = f(x,y) / f(y) = (2*x + 3*y + 2) / (4*x + 10)
+
+# inverse CDF method
+# integral(0,Z) f(x|y) = u 
+# integral(0,Z) f(y|x) = u
+
+# 1/(4*x + 10) integral(0,z) 2*x + 3*y + 2 = u
+# 1/(4*x + 10) 2*x*z + (3/2)*z^2 + 2*z = u
+# z = sqrt((2*u*(4*x+10))/3 +((2*x+2)/3)*((2*x+2)/3)) - ((2*x+2)/3)  >> f(y|x)
+
+# x[j+1] <- f(x|y[j])
+# y[j+1] <- f(y|x[j+1]) << u , x[j+1]
+
+x=matrix(-5,2000); y=matrix(-5,2000) # initial value = (-5,-5) = (x[j],y[j])
+for(i in 2:2000){
+  #sample from x | y
+  u=runif(1,min=0, max=1)
+  x[i]=sqrt(u*(6*y[i-1]+8)+(1.5*y[i-1]+1)*(1.5*y[i-1]+1)) -(1.5*y[i-1]+1)
+  #sample from y | x
+  u=runif(1,min=0,max=1)
+  y[i]=sqrt((2*u*(4*x[i]+10))/3 +((2*x[i]+2)/3)*((2*x[i]+2)/3)) - ((2*x[i]+2)/3)
+}
+
+a<-3:2000
+plot(x[a],y[a],type = "b")
+
+library(MASS)
+den <- kde2d(x[5:2000],y[5:2000])
+persp(den, box = F)
+
+install.packages("plotly")
+library(plotly)
+plot_ly(x=den$x, y=den$y, z=den$z) %>% add_surface()
