@@ -1,0 +1,129 @@
+##################################
+## Function 1: QR decomposition ##
+##################################
+
+myQR <- function(A){
+  
+  ## Perform QR decomposition on the matrix A
+  ## Input: 
+  ## A, an n x m matrix
+  ## Function should output a list with Q.transpose and R
+  ## Q is an orthogonal n x n matrix
+  ## R is an upper triangular n x m matrix
+  ## Q and R satisfy the equation: A = Q %*% R'
+  
+  n = dim(A)[1]
+  m = dim(A)[2]
+  R <- A
+  Q <- diag(n)
+  
+  for(k in 1:(m-1)){
+    x <- R[k:n,k]
+    v <- x
+    v[1] <- x[1] + sign(x[1]) * sqrt(sum(x^2))
+    u <- v/sqrt(sum(v^2))
+    H <- diag(n)
+    H[k:n,k:n] <- diag(n-k+1) - 2 * u %*% t(u)
+    R <- H %*% R
+    Q <- Q %*% H
+    
+  }
+  
+  return(list("Q" = Q, "R" = R))
+  
+}
+
+###############################################
+## Function 2: Linear regression based on QR ##
+###############################################
+
+myLinearRegression <- function(X, Y){
+  
+  ## Perform the linear regression of Y on X
+  ## Input: 
+  ## X is an n x p matrix of explanatory variables
+  ## Y is an n dimensional vector of responses
+  ## Do NOT simulate data in this function. n and p
+  ## should be determined by X.
+  ## Use myQR inside of this function
+  
+  n = dim(X)[1]
+  p = dim(X)[2]+1
+  
+  intercept <- rep(1,n)
+  A <- cbind(intercept,X,Y)
+  output <- myQR(A)
+  R <- output$R[1:p,]
+  beta_hat <- rep(0,p)
+  
+  for(i in p:1){
+    beta_hat[i] <- (R[i,p+1] - R[i,1:p] %*% beta_hat) / R[i,i] 
+    
+  }
+  
+  error <- sqrt(sum(output$R[(p+1):n,]^2))
+  ## Function returns the 1 x (p + 1) vector beta_ls, 
+  ## the least squares solution vector
+  return(list(beta_hat=beta_hat, error=error))
+  
+}
+
+##################################################
+## Function 3: Eigen decomposition based on QR  ##
+##################################################
+myEigen_QR <- function(A, numIter = 1000) {
+  
+  ## Perform PCA on matrix A using your QR function, myQR or Rcpp myQRC.
+  ## Input:
+  ## A: Square matrix
+  ## numIter: Number of iterations
+  ## Function should output a list with D and V
+  ## D is a vector of eigenvalues of A
+  ## V is the matrix of eigenvectors of A (in the 
+  ## same order as the eigenvalues in D.)
+  r = dim(A)[1]
+  c = dim(A)[2]
+  
+  V = matrix(runif(r*r), nrow = r)
+  
+  for (i in 1 : numIter){
+    op = myQR(V)
+    Q = op$Q
+    V  = A %*% Q
+  }
+  
+  op = myQR(V)
+  
+  Q = op$Q
+  R = op$R
+  ## Function should output a list with D and V
+  ## D is a vector of eigenvalues of A
+  ## V is the matrix of eigenvectors of A (in the 
+  ## same order as the eigenvalues in D.)
+  
+  return(list("D" = diag(R), "V" = Q))
+}
+
+###################################################
+## Function 4: PCA based on Eigen decomposition  ##
+###################################################
+myPCA <- function(X) {
+  
+  ## Perform PCA on matrix A using your eigen decomposition.
+  ## Input:
+  ## X: Input Matrix with dimension n * p
+
+  ## Output : 
+  ## Q : basis matrix, p * p which is the basis system.
+  ## Z : data matrix with dimension n * p based on the basis Q.
+  ## It should match X = Z %*% Q.T. Please follow lecture notes.
+  
+  Sx <- var(X)
+  V <- myEigen_QR(Sx)$V
+  Z <- as.matrix(X) %*%as.matrix(V)
+  
+
+  return(list("Q" = V, "Z" = Z))
+}
+
+
