@@ -1,0 +1,188 @@
+read_mnist <- function(){
+  mnist <- list(train=list(images=c(), labels=c()), test=list(images=c(), labels=c()))
+  for (ttt in c("train", "t10k"))  {
+    
+    # Open connection to read image file
+    fn <- paste0(ttt,"-images-idx3-ubyte.gz")
+    url <- url(paste0("http://yann.lecun.com/exdb/mnist/",fn), "rb")
+    conn <- gzcon(url)
+    
+    magic <- readBin(conn, 'integer', n = 1, size = 4, endian = "big")  # magic bytes
+    typ <- bitwAnd(bitwShiftR(magic,8), 0x000000ff)   # should be 8 => unsigned byte    
+    ndm <- bitwAnd(magic, 0x000000ff)                 # dimensionality (should be 3)
+    
+    # Read dimensions
+    dim <- readBin(conn, 'integer', n = ndm, size = 4, endian = "big")
+    
+    # Read unsigned bytes
+    data <- readBin(conn, 'integer', n = prod(dim), size = 1, signed = FALSE)
+    
+    # store "t10k" data to "test" list
+    tt <- ttt
+    if(tt == "t10k")
+      tt <- "test"
+    
+    # Save as matrix, row is image number, col is the image as 
+    # single-dimensional 28 x 28 array of real.
+    mmm <- matrix(data, nrow=dim[1], byrow = TRUE) 
+    mnist[[tt]][["images"]] <- mmm
+    close(conn)
+    
+    # Open connection to read label file  
+    fn <- paste0(ttt,"-labels-idx1-ubyte.gz")
+    url <- url(paste0("http://yann.lecun.com/exdb/mnist/",fn), "rb")
+    conn <- gzcon(url)
+    
+    magic <- readBin(conn, 'integer', n = 1, size = 4, endian = "big")  # magic bytes
+    nlb <- readBin(conn, 'integer', n = 1, size = 4, endian = "big")    # number of labels
+    
+    # Read unsigned bytes
+    data <- readBin(conn, 'integer', n = nlb, size = 1, signed = FALSE)
+    
+    # Store as integer
+    mnist[[tt]][["labels"]] <- data
+    close(conn)
+  }
+  mnist
+}
+
+mnist <- read_mnist()
+
+#image(1:28, 1:28, matrix(mnist$test$images[1,], nrow=28)[ ,28:1],col = gray(seq(0, 1, 0.05)))
+#mnist$test$labels[1]
+
+vectorize<-function(j){
+  k <- rep(0,10)
+  k[j] <- 1 # label col = 1 if num == col 
+  k
+}
+
+x <- mnist$train$image
+x_hat <- mnist$test$image
+trainy <- mnist$train$labels
+
+y<- t(apply(matrix(trainy),1,vectorize)) # flag by col
+
+table <- matrix(NA, nrow= 2028, ncol=4)
+d <- 1
+
+Sys.Date()
+for(a in 25:50){
+  for(b in 25:50){
+    for(c in c(0.1,0.5,1)){
+      
+      table[d,1] <- a; table[d,2] <- b; table[d,3] <- c
+      
+      #a <- 40;b <- 44; c<- 0.5
+      input_layer_size <- 784
+      output_layer_size <- 10
+      hidden_layer_size_1 <- a
+      hidden_layer_size_2 <- b
+      scalar<-c
+      
+      sigmoid <- function(z) 1/(1+exp(-z))
+      sigmoidprime <-function(z) exp(-z) / ((1+exp(-z))^2)
+      
+      cost <- function(y,y_hat) 0.5 * sum((y - y_hat)^2)
+      
+      #initial weights
+      W_1 <- matrix(runif(input_layer_size * hidden_layer_size_1) - 0.5, nrow = input_layer_size, ncol = hidden_layer_size_1)
+      W_2 <- matrix(runif(hidden_layer_size_1 * hidden_layer_size_2) - 0.5, nrow = hidden_layer_size_1, ncol = hidden_layer_size_2)
+      W_3 <- matrix(runif(hidden_layer_size_2 * output_layer_size) - 0.5, nrow = hidden_layer_size_2, ncol = output_layer_size)
+      #Biases
+      B1 <- matrix(runif(hidden_layer_size_1),ncol=1)
+      B2 <- matrix(runif(hidden_layer_size_2),ncol=1)
+      B3 <- matrix(runif(output_layer_size),ncol=1)
+      
+      
+      n<-dim(y)[1]
+      batch_size <- 10
+      j<-sample(1:n)
+      j_sub <- seq(1,n,by=batch_size)
+      
+      for(i in j_sub){
+        rows<-j[i:(i+batch_size-1)]
+        X <- x[rows,]/255
+        Y <- y[rows,]
+        
+        Z_2 <- X %*% W_1
+        A_2 <- sigmoid(Z_2 + t(B1 %*% rep(1,batch_size)))
+        Z_3 <- A_2 %*% W_2
+        A_3 <- sigmoid(Z_3 + t(B2 %*% rep(1,batch_size)))
+        Z_4 <- A_3 %*% W_3
+        Y_hat <- sigmoid(Z_4 + t(B3 %*% rep(1,batch_size)))
+        
+        #Stochastic Gradient
+        delta_4 <- (-(Y-Y_hat) * sigmoidprime(Z_4 + t(B3 %*% rep(1,batch_size))))
+        djdb3 <- rep(1,batch_size) %*% delta_4
+        djdw3 <- t(A_3) %*% delta_4
+        
+        delta_3 <- delta_4 %*% t(W_3) * sigmoidprime(Z_3 + t(B2 %*% rep(1,batch_size)))
+        djdb2 <- rep(1,batch_size) %*% delta_3
+        djdw2 <- t(A_2) %*% delta_3
+        
+        delta_2 <- delta_3 %*% t(W_2) * sigmoidprime(Z_2 + t(B1 %*% rep(1,batch_size)))
+        djdb1 <- rep(1,batch_size) %*% delta_2
+        djdw1 <- t(X) %*% delta_2
+        
+        #Update
+        W_1 <- W_1 - scalar * djdw1
+        B2 <- B2 - scalar * t(djdb2)
+        W_2 <- W_2 - scalar * djdw2
+        B1 <- B1 - scalar * t(djdb1)
+        W_3 <- W_3 - scalar * djdw3
+        B3 <- B3 - scalar * t(djdb3)
+      }
+      
+      Xt<-x_hat/255 
+      batch_size <- dim(Xt)[1]
+      
+      Z_2 <- Xt %*% W_1
+      A_2 <- sigmoid(Z_2 + t(B1 %*% rep(1,batch_size)))
+      Z_3 <- A_2 %*% W_2
+      A_3 <- sigmoid(Z_3 + t(B2 %*% rep(1,batch_size)))
+      Z_4 <- A_3 %*% W_3
+      Y_hat <- sigmoid(Z_4 + t(B3 %*% rep(1,batch_size)))
+      
+      guess <- rep(0,batch_size)
+      
+      for(i in 1:batch_size){
+        guess[i] <- which.max(Y_hat[i,])
+      }
+      
+      table[d,4] <- sum(guess!= mnist$test$labels)/10000
+      d <- d + 1
+    }
+  }
+}
+Sys.Date()
+
+#table(guess,mnist$test$labels)
+
+library(png)
+pic3 <- list.files('C:/Users/ykei/Desktop/Hand Writing');setwd('C:/Users/ykei/Desktop/Hand Writing')
+my_image <- readPNG(pic3[1])
+img_mat=my_image[,,1] # will hold the grayscale values divided by 255
+
+#display image
+img_mat=t(apply(img_mat, 2, rev)) # otherwise the image will be rotated
+image(img_mat, col  = gray((0:255)/255)) # plot in grayscale
+
+#image from paint
+img_mat=my_image[,,1]
+hand <- as.vector(t(img_mat))
+Xt <- hand
+
+#Mnist image
+#xt <- mnist$test$images[3,]
+#mnist$test$labels[3]
+#Xt<-xt/255
+
+Z_2 <- Xt %*% W_1
+A_2 <- sigmoid(Z_2 + t(B1))
+Z_3 <- A_2 %*% W_2
+A_3 <- sigmoid(Z_3 + t(B2))
+Z_4 <- A_3 %*% W_3
+Y_hat <- sigmoid(Z_4 + t(B3))
+which.max(Y_hat)
+Y_hat
