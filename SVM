@@ -1,0 +1,137 @@
+#install.packages('dslabs')
+library(dslabs)
+
+Prepare_data <- function(){
+  mnist <- read_mnist()
+  trainx <- mnist$train$images;trainy <- mnist$train$labels
+  testx <- mnist$test$images;testy <- mnist$test$labels
+  
+  trainx <- trainx[which(trainy==0 | trainy==1),]
+  trainy <- trainy[which(trainy==0 | trainy==1)]
+  testx <- testx[which(testy==0 | testy==1),]
+  testy <- testy[which(testy==0 | testy==1)]
+  
+  index <- sample(10000,1000);index_test <- sample(2000,1000)
+  trainx <- trainx[index,]/255
+  trainy <- trainy[index]
+  testx <- testx[index_test,]/255
+  testy <- testy[index_test]
+  testy[which(testy==0)] <- -1
+  trainy[which(trainy==0)] <- -1
+  return(list('trainx'=trainx,'trainy'=trainy,'testx'=testx,'testy'=testy))
+}
+
+#d <- Prepare_data() # store data in d
+
+mySVM <- function(trainx,testx,trainy,testy,kernel_type,training_method){
+  n <- dim(trainx)[1]
+  n_test <- dim(testx)[1]
+  
+  if(training_method == 'dual'){
+    iter=5
+    # create K and Q
+    if(kernel_type == 2){
+      radial <- function(x1,x2,gamma=0.5) exp(-gamma*sum((x1-x2)^2))
+      Q <- outer( 1:n, 1:n, Vectorize(function(i,j) radial(trainx[i,],trainx[j,])*trainy[i]*trainy[j]))
+      K_test <- outer( 1:n, 1:n_test, Vectorize(function(i,j) radial(trainx[i,],testx[j,])))
+    } 
+    else if(kernel_type == 0){
+      linear <- function(x1,x2) x1%*%x2
+      Q <- outer( 1:n, 1:n, Vectorize(function(i,j) linear(trainx[i,],trainx[j,])*trainy[i]*trainy[j]))
+      K_test <- outer( 1:n, 1:n_test, Vectorize(function(i,j) linear(trainx[i,],testx[j,])))
+    } 
+    else if(kernel_type == 1){
+      polynomial <- function(x1,x2,gamma=0.5,constant=0) (x1%*%x2*gamma + constant)^2
+      Q <- outer( 1:n, 1:n, Vectorize(function(i,j) polynomial(trainx[i,],trainx[j,])*trainy[i]*trainy[j]))
+      K_test <- outer( 1:n, 1:n_test, Vectorize(function(i,j) polynomial(trainx[i,],testx[j,])))
+    } 
+    else if(kernel_type == 3){
+      sigmoid <- function(x1,x2,gamma=0.1,constant=1) atan(x1%*%x2*gamma + constant)
+      Q <- outer( 1:n, 1:n, Vectorize(function(i,j) sigmoid(trainx[i,],trainx[j,])*trainy[i]*trainy[j]))
+      K_test <- outer( 1:n, 1:n_test, Vectorize(function(i,j) sigmoid(trainx[i,],testx[j,])))
+    } 
+    
+    alpha <- rep(0,n)
+    error <- rep(0,iter)
+    for(k in 1:iter){
+      # find alpha
+      for(i in 1:n){
+        alpha[i] <- min(2,max(0, (1-alpha[-i]%*%t(Q[i,-i]))/Q[i,i]))
+      }
+      # prediction
+      f <- rep(0,n_test)
+      for(j in 1:n_test){
+        f[j] <- sum(alpha * trainy * K_test[,j])
+      }
+      f <- sign(f)
+      error[k] <- sum(f==testy)/n_test
+    }
+    return(error)
+  }
+  else if(training_method == 'GD'){
+    lambda=0.1;iter=10;eta=0.1;iter=10
+    if(kernel_type == 2){
+      radial <- function(x1,x2,gamma=0.5) exp(-gamma*sum((x1-x2)^2))
+      K <- outer( 1:n, 1:n, Vectorize(function(i,j) radial(trainx[i,],trainx[j,])))
+      K_test <- outer( 1:n, 1:n_test, Vectorize(function(i,j) radial(trainx[i,],testx[j,])))
+    } 
+    else if(kernel_type == 0){
+      linear <- function(x1,x2) x1%*%x2
+      K <- outer( 1:n, 1:n, Vectorize(function(i,j) linear(trainx[i,],trainx[j,])))
+      K_test <- outer( 1:n, 1:n_test, Vectorize(function(i,j) linear(trainx[i,],testx[j,])))
+    } 
+    else if(kernel_type == 1){
+      polynomial <- function(x1,x2,gamma=0.5,constant=0) (x1%*%x2*gamma + constant)^2
+      K <- outer( 1:n, 1:n, Vectorize(function(i,j) polynomial(trainx[i,],trainx[j,])))
+      K_test <- outer( 1:n, 1:n_test, Vectorize(function(i,j) polynomial(trainx[i,],testx[j,])))
+    } 
+    else if(kernel_type == 3){
+      sigmoid <- function(x1,x2,gamma=0.1,constant=1) atan(x1%*%x2*gamma + constant)
+      K <- outer( 1:n, 1:n, Vectorize(function(i,j) sigmoid(trainx[i,],trainx[j,])))
+      K_test <- outer( 1:n, 1:n_test, Vectorize(function(i,j) sigmoid(trainx[i,],testx[j,])))
+    } 
+    
+    alpha <- rep(0,n)
+    error <- rep(0,iter)
+    s <- rep(0,n)
+    
+    for(i in 1:iter){
+      for(j in 1:n){
+        s[j] <- sum(alpha * trainy * K[,j])
+      }
+      alpha <- alpha + eta * ((s * trainy <= 1)/n - lambda * alpha)
+      
+      # prediction
+      f <- rep(0,n_test)
+      for(k in 1:n_test){
+        f[k] <- sum(alpha * trainy * K_test[,k])
+      }
+      f <- sign(f)
+      error[i] <- sum(f==testy)/n_test
+    }
+    return(error)
+  }
+}
+
+test <- function(trainx,testx,trainy,testy){
+  GD_linear<-mySVM(trainx,testx,trainy,testy,0,'GD')
+  GD_radial<-mySVM(trainx,testx,trainy,testy,2,'GD')
+  GD_polyno<-mySVM(trainx,testx,trainy,testy,1,'GD')
+  GD_sigmoi<-mySVM(trainx,testx,trainy,testy,3,'GD')
+  plot(1:10,GD_linear,ylim=c(0.8,1),col=1,type='l',ylab='accuracy',main='GD with different kernel')
+  lines(1:10,GD_radial,col=2)
+  lines(1:10,GD_polyno,col=3)
+  lines(1:10,GD_sigmoi,col=4)
+  
+  dual_linear<-mySVM(trainx,testx,trainy,testy,0,'dual')
+  dual_radial<-mySVM(trainx,testx,trainy,testy,2,'dual')
+  dual_polyno<-mySVM(trainx,testx,trainy,testy,1,'dual')
+  dual_sigmoi<-mySVM(trainx,testx,trainy,testy,3,'dual')
+  plot(1:5,dual_linear,ylim=c(0.8,1),col=1,type='l',ylab='accuracy',main='Dual with different kernel')
+  lines(1:5,dual_radial,col=2)
+  lines(1:5,dual_polyno,col=3)
+  lines(1:5,dual_sigmoi,col=4)
+}
+
+#test <- function(d$trainx,d$testx,d$trainy,d$testy)
+
