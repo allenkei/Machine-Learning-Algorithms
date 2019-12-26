@@ -64,6 +64,7 @@ myLinearRegression <- function(X, Y){
   error <- sqrt(sum(output$R[(p+1):n,]^2))
   ## Function returns the 1 x (p + 1) vector beta_ls, 
   ## the least squares solution vector
+  
   return(list(beta_hat=beta_hat, error=error))
   
 }
