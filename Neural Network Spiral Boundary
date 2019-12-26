@@ -1,0 +1,83 @@
+#CS231n example in R
+
+N = 100
+D = 2
+K = 3
+
+X <- matrix(0,nrow=N*K,ncol=D)
+Y <- matrix(0,nrow=N*K,ncol=1)
+
+for(i in 1:K){
+  index <- (1+(i-1)*100):(i*100)
+  r <- seq(0,1,length.out = N)
+  t <- seq(i*4,(i+1)*4,length.out = N) + rnorm(N)*0.2
+  X[index,] <- cbind(r*sin(t),r*cos(t))
+  Y[index,] <- i
+}
+
+#plot(X[,1],X[,2],col=Y+1,pch=19)
+
+N <- dim(X)[1]
+reg <- 1e-3
+step_size <- 0.1
+
+h = 100 
+W = 0.01 * matrix(rnorm(D*h),nrow=D,ncol=h)
+b = matrix(0,nrow=h,ncol=1)
+W2 = 0.01 * matrix(rnorm(h*K),nrow=h,ncol=K)
+b2 = matrix(0,nrow=K,ncol=1)
+
+
+for(iter in 1:10000){
+  A <- X %*% W + t(b %*% rep(1,N))
+  hidden_layer = ifelse(A > 0,A,0) 
+  scores = hidden_layer %*% W2 + t(b2 %*% rep(1,N))
+  
+  probs <- exp(scores)/rowSums(exp(scores))
+  correct_logprobs <- matrix(0,nrow=N)
+  for(i in 1:N){correct_logprobs[i,1] <- -log(probs[i,Y[i]])}
+  data_loss <- sum(correct_logprobs)/N
+  reg_loss <- 0.5*reg*sum(W^2) + 0.5*reg*sum(W2^2)
+  loss <- data_loss + reg_loss
+  if(iter %% 1000 == 0) {cat('iter = ',iter,'loss = ',loss,'\n')}
+  
+  I_y_equal_k <- matrix(0,nrow=N,ncol=K)
+  for(i in 1:N){I_y_equal_k[i,Y[i]] <- 1} 
+  dlossdscores = (probs - I_y_equal_k)/N
+  
+  dlossdW2 <- t(hidden_layer) %*% dlossdscores + reg*W2
+  dlossdb2 <- rep(1,N) %*% dlossdscores
+  
+  dlossdhidden <- dlossdscores %*% t(W2)
+  dlossdhidden <- ifelse(hidden_layer > 0, dlossdhidden, 0)
+  dlossdW <- t(X) %*% dlossdhidden + reg*W
+  dlossdb <- rep(1,N) %*% dlossdhidden
+  
+  W2 <- W2 - step_size*dlossdW2
+  b2 <- b2 - step_size*t(dlossdb2)
+  W <- W - step_size*dlossdW
+  b <- b - step_size*t(dlossdb)
+  
+}
+
+A <- X %*% W + t(b %*% rep(1,N))
+hidden_layer = ifelse(A > 0,A,0) 
+scores = hidden_layer %*% W2 + t(b2 %*% rep(1,N))
+prediction <- apply(scores,1,which.max)
+mean(prediction == Y)
+
+plot(X[,1],X[,2],col=Y+1,pch=19,xlim=c(-1.5,1.5),ylim=c(-1.5,1.5))
+new_X <- as.matrix(expand.grid(seq(-1.5,1.5,0.05),seq(-1.5,1.5,0.05)))
+new_N <- dim(new_X)[1]
+new_A <- new_X %*% W + t(b %*% rep(1,new_N))
+new_hidden_layer = ifelse(new_A > 0,new_A,0) 
+new_scores = new_hidden_layer %*% W2 + t(b2 %*% rep(1,new_N))
+new_prediction <- apply(new_scores,1,which.max)
+for(i in 1:new_N){
+  if(new_prediction[i]==1){new_prediction[i]<-'lightcoral'}
+  else if(new_prediction[i]==2){new_prediction[i]<-'lightgreen'}
+  else if(new_prediction[i]==3){new_prediction[i]<-'lightblue'}
+}
+
+plot(new_X[,1],new_X[,2],col=new_prediction,pch=19)
+points(X[,1],X[,2],col=Y+1,pch=19)
