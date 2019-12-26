@@ -1,0 +1,310 @@
+##################################
+## Function 1: QR decomposition ##
+##################################
+
+myQR <- function(A){
+  
+  ## Perform QR decomposition on the matrix A
+  ## Input: 
+  ## A, an n x m matrix
+  ## Function should output a list with Q.transpose and R
+  ## Q is an orthogonal n x n matrix
+  ## R is an upper triangular n x m matrix
+  ## Q and R satisfy the equation: A = Q %*% R
+  
+  n = dim(A)[1]
+  m = dim(A)[2]
+  
+  R = A
+  Q = diag(n)
+  
+  for (k in 1 : (m-1)){
+    x = matrix(0,n,1)
+    x[k:n,1] = R[k:n, k]
+    v = x
+    
+    v[k] = x[k] + sign(x[k,1])*norm(x, type = "F")
+    s = norm(v, "F")
+    
+    if(s != 0){
+      u = v/s
+      R = R - 2*(u %*% (t(u) %*% R))
+      Q = Q - 2*(u %*% (t(u) %*% Q))
+    }
+  }
+  
+  return(list("Q" = Q, "R" = R))
+  
+  
+}
+
+###############################################
+## Function 2: Linear regression based on QR ##
+###############################################
+
+myLM <- function(X, Y){
+  
+  ## Perform the linear regression of Y on X
+  ## Input: 
+  ## X is an n x p matrix of explanatory variables
+  ## Y is an n dimensional vector of responses
+  ## Use myQR inside of this function
+  ## Function returns the 1 x p vector beta_ls, notice this version do not add intercept.
+  ## the least squares solution vector
+  
+  n = dim(X)[1]
+  p = dim(X)[2]
+  
+  A <- cbind(X,Y)
+  output <- myQR(A)
+  R <- output$R[1:p,1:p]
+  Y_star <- output$R[1:p,p+1]
+  beta_ls <- solve(R,Y_star)
+  
+  
+  ## Function returns the 1 x (p + 1) vector beta_ls, 
+  ## the least squares solution vector
+  return(beta_ls)
+  
+  
+}
+
+######################################
+## Function 3: Logistic regression  ##
+######################################
+
+## Expit/sigmoid function
+expit <- function(x){
+  1 / (1 + exp(-x))
+}
+
+myLogisticSolution <- function(X, Y){
+
+  p <- ncol(X)
+  n <- nrow(X)
+  
+  epsilon <- 1e-6
+  
+  beta <- rep(0,p)
+  
+  repeat{
+    si <- X %*% beta
+    pi <- expit(si)
+    wi <- pi*(1-pi)
+    xi_tilda <- matrix(sqrt(wi), n, p)*X
+    yi_hat <- si + (Y-pi)/wi
+    yi_tilda <- sqrt(wi) * yi_hat
+    yi_tilda[which(is.nan(yi_tilda))] <- 0
+    beta_t <- myLM(xi_tilda,yi_tilda)
+    error <- sum(abs(beta_t - beta))
+    beta <- beta_t
+    if(error < epsilon) break
+  }
+  
+  
+  return(beta)
+  
+}
+
+###########################
+## Function 4: Adaboost  ##
+###########################
+
+myAdaboost <- function(x1, x2, y) {
+  y[which(y==0)] <- -1
+  X <- cbind(x1,x2)
+  ind <- sample(1:length(y),0.8*nrow(X))
+  testingX <- X[-ind,];testingY <- y[-ind]
+  X <- X[ind,];y <- y[ind]
+  n <- length(y)
+  wi <- rep(1/n,n)
+  si <- rep(0,n)
+  cut_list <- seq(0.1,0.9,0.01)
+  t_holder <- c()
+  beta_holder <- c()
+  cut_dim <- c()
+  iter <- 1
+  error <- rep(0,25)
+  repeat{
+    error_holder <- matrix(0,ncol=length(cut_list),nrow=2)
+    for(p in 1:2){
+      for(t in 1:length(cut_list)){
+        serr <- 0
+        for(i in 1:n){
+          if(X[i,p] <= cut_list[t] & y[i] != 1) serr <- serr + wi[i] #error
+          if(X[i,p] > cut_list[t] & y[i] != -1) serr <- serr + wi[i] #error
+        }
+        error_holder[p,t] <- serr
+      }
+    }
+    min_pos <- which(error_holder == min(error_holder), arr.ind = TRUE)
+    cut_dim <- c(cut_dim,min_pos[1])
+    t_holder <- c(t_holder,cut_list[min_pos[2]])
+    beta <- 0.5 * log((1-error_holder[min_pos[1],min_pos[2]])/error_holder[min_pos[1],min_pos[2]])
+    beta_holder <- c(beta_holder,beta)
+    si <- si + beta * ifelse(X[,min_pos[1]] <= cut_list[min_pos[2]],1,-1)
+    
+    wi <- exp(-y*si)
+    sw = sum(wi)
+    wi <- wi/sw
+    error[iter] <- 1- sum(sign(si)==y)/length(y)
+    iter <- iter + 1
+    if(iter == 26) break
+    
+  }
+  
+  testing_si <- rep(0,length(testingY))
+  testing_error <- rep(0,25)
+  for(i in 1:25){
+    testing_si <- testing_si + beta_holder[i] * ifelse(testingX[,cut_dim[i]] <= t_holder[i],1,-1)
+    testing_error[i] <- 1- sum(sign(testing_si)==testingY)/length(testingY)
+  }
+  
+  plot(1:25,error,type='l',col='red',main = 'Adaboost')
+  lines(1:25,testing_error, col="blue")
+  legend(20, 0.2, legend=c("Testing", "Training"),col=c("blue", "red"), lty=1, cex=0.8)
+  
+  plot(X[,1],X[,2],col = as.factor(sign(si)),main = 'Adaboost')
+}
+
+
+
+##########################
+## Function 5: XGBoost  ##
+##########################
+
+myXGBoost <- function(x1, x2, y) {
+  X <- cbind(x1,x2)
+  ind <- sample(1:length(y),0.8*nrow(X))
+  testingX <- X[-ind,];testingY <- y[-ind]
+  X <- X[ind,];y <- y[ind]
+  n <- length(y)
+  cut_list <- seq(0,1,0.01)
+  si <- rep(0,n)
+  pi <- rep(0.5,n)
+  wi <- pi*(1-pi)
+  ri <- (y-pi)/wi
+  
+  
+  cut_dim <- c()
+  cut_t <- c()
+  c1_cut <- c()
+  c2_cut <- c()
+  r_cut <- c()
+  
+  iter <- 1
+  error <- rep(0,25)
+  
+  repeat{
+    tracking <- c()
+    
+    for(p in 1:2){
+      for(t in 1:length(cut_list)){
+        s1=s2=sw1=sw2=0
+        
+        for(i in 1:n){
+          if(X[i,p] <= cut_list[t]){
+            s1 <- s1+wi[i]*ri[i]
+            sw1 <- sw1 + wi[i]
+          }
+          else if(X[i,p] > cut_list[t]){
+            s2 <- s2+wi[i]*ri[i]
+            sw2 <- sw2 + wi[i]
+          }
+        } 
+        
+        c1 <- s1/sw1
+        c2 <- s2/sw2
+        
+        R=0
+        
+        for(i in 1:n){
+          if(X[i,p] <= cut_list[t]){
+            R <- R + wi[i] * (ri[i]-c1)^2
+          }
+          else if(X[i,p] > cut_list[t]){
+            R <- R + wi[i] * (ri[i]-c2)^2
+          }
+        } # R
+        
+        tracking <- cbind(tracking,c(p,c1,c2,cut_list[t],R))
+      }
+    }
+    min_pos <- which.min(tracking[5,])
+    
+    cut_dim <- c(cut_dim,tracking[1,min_pos])
+    c1_cut <- c(c1_cut,tracking[2,min_pos])
+    c2_cut <- c(c2_cut,tracking[3,min_pos])
+    cut_t <- c(cut_t,tracking[4,min_pos])
+    r_cut <- c(r_cut,tracking[5,min_pos])
+    
+    for(i in 1:n){
+      if(X[i,tracking[1,min_pos]] <= tracking[4,min_pos]){
+        si[i] <- si[i] + tracking[2,min_pos]
+      }else{
+        si[i] <- si[i] + tracking[3,min_pos]
+      }
+    }
+    
+    pi <- exp(si)/(1+exp(si))
+    wi <- pi*(1-pi)
+    ri <- (y-pi)/wi
+    
+    pred_value<- sign(si)
+    pred_value[which(pred_value == -1)] <- 0
+    error[iter] <- 1- sum(pred_value==y)/length(y)
+    iter <- iter + 1
+    if(iter == 26) break
+  }
+  
+  testing_si <- rep(0,length(testingY))
+  testing_error <- rep(0,25)
+  for(i in 1:25){
+    testing_si <- testing_si + ifelse(testingX[,cut_dim[i]] <= cut_t[i],c1_cut[i],c2_cut[i])
+    pred_test_value<- sign(testing_si)
+    pred_test_value[which(pred_test_value == -1)] <- 0
+    testing_error[i] <- 1- sum(pred_test_value==testingY)/length(testingY)
+  }
+  
+  plot(1:25,error,type='l',col='red',main = 'XGboost')
+  lines(1:25,testing_error, col="blue")
+  legend(20, 0.1, legend=c("Testing", "Training"),col=c("blue", "red"), lty=1, cex=0.8)
+  
+  plot(X[,1],X[,2],col = as.factor(sign(pred_value)),main = 'XGboost')
+}
+
+## Simulation
+
+test <- function() {
+  
+  # Test (1)
+  n <- 2000
+  p <- 4
+  
+  X    <- matrix(rnorm(n * p), nrow = n)
+  beta <- c(12, -2,-3, 4)
+  Y    <- 1 * (runif(n) < expit(X %*% beta))
+  
+  ## Our solution
+  logistic_beta <- myLogisticSolution(X, Y)
+  logistic_beta    
+  
+  ## R's solution
+  coef(glm(Y ~ X + 0, family = binomial(link = 'logit')))
+  
+  
+  # Test (2, 3)
+  
+  num_sample <- 10000
+  
+  x1 <- runif(num_sample)
+  x2 <- runif(num_sample)
+  y <- as.integer((x1^2+x2^2 < 1))
+  
+  
+  
+  myAdaboost(x1, x2, y)
+  myXGBoost(x1, x2, y)
+}
+
+
