@@ -1,5 +1,5 @@
 #####################################
-## Function 1: Lasso solution path ##
+## Function 1: LASSO solution path ##
 #####################################
 
 myLasso <- function(X, Y, lambda_all){
