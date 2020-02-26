@@ -1,0 +1,68 @@
+library(R.matlab)
+MNIST <- readMat(file.choose())
+
+X <- MNIST$X
+y <- MNIST$y
+n <- dim(X)[1]; m <- dim(X)[2]
+xtest <- MNIST$Xtest[1:1000,]
+ytest <- MNIST$ytest[1:1000]
+
+vectorize<-function(j){
+  k <- rep(0,10)
+  k[j+1] <- 1 
+  k
+}
+
+Y <- t(apply(matrix(y),1,vectorize))
+
+create_z <- function(X,B){
+  z <- 1/rowSums(exp(X %*% B))
+  return(diag(z))
+}
+
+gradient <- function(X,Z,B,Y){
+  t(X) %*% (Z %*% exp(X%*%B) - Y)
+}
+
+f<-function(X,B){
+  z <- rowSums(exp(X %*% B))
+  holder <- 0
+  for(i in 1:n){
+    holder <- holder - log( exp(X[i,] %*% B[,(y[i]+1)]) / z[i] ) 
+  }                  
+  return(holder)
+}
+
+sub_gradient_part <- function(B){
+  ifelse(B > 0, 1,ifelse(B < 0, -1, runif(1,-1,1)))
+}
+
+lambda <- exp(seq(log(10), log(10^(-2)), length.out = 10))
+error <- rep(0,10)
+
+for(choice in 1:length(lambda)){
+  lam <- lambda[choice]
+  B <- matrix(runif(m*10,0,1),nrow=m,ncol=10)
+  for(iter in 1:2000){
+    Z <- create_z(X,B)
+    subgradient <- gradient(X,Z,B,Y) + lam * sub_gradient_part(B)
+    B <- B - (0.001/iter) * subgradient
+    current_score <- f(X,B)
+    if(iter == 1){
+      score <- current_score
+      new_B <- B
+    }else{
+      if(current_score < score){
+        score <- current_score
+        new_B <- B
+    }
+  }
+  testing <- xtest %*% new_B
+  prediction <- rep(0,dim(xtest)[1])
+  for(i in 1:dim(xtest)[1]){
+    prediction[i] <- which.max(testing[i,])-1
+  }
+  error[choice] <- sum(prediction!= ytest)/dim(xtest)[1]
+}
+
+plot(lambda,error,type='l',col=1,ylab='error rate')
